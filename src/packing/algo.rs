@@ -13,14 +13,14 @@ struct Layer {
 }
 
 pub struct EbAfit<'a> {
-    container: &'a Container,
-    item_list: &'a Vec<Item>,
+    pub container: &'a Container,
+    item_list: Vec<Item>,
     layer_list: Vec<Layer>,
     orientation_variant: OrientationVariant<'a>,
     orientation: Vector3,
-    temp: f64,
+    pub temp: f64,
     // sum of volume of all item / box
-    total_box_vol: f64,
+    pub total_box_vol: f64,
     // current box index that being evaluated
     bn: usize,
 
@@ -31,7 +31,22 @@ impl<'a> EbAfit<'a> {
     pub fn from_input(container: &'a Container, item_list: &'a Vec<Item>) -> Self {
         let mut orientation_variant = OrientationVariant::from_container(container);
         let orientation = orientation_variant.next().unwrap();
-        let total_box_vol = item_list
+
+        // flatten item list and filter out if the quantity are 0
+        let mut computed_item_list = Vec::new();
+        for item in item_list.iter() {
+            if item.quantity == 0 {
+                continue;
+            };
+
+            for _ in 0..item.quantity {
+                let mut item = item.clone();
+                item.quantity = 1;
+                computed_item_list.push(item);
+            }
+        }
+
+        let total_box_vol = computed_item_list
             .iter()
             .map(|n| n.get_volume())
             .reduce(|acc, n| acc + n)
@@ -39,7 +54,7 @@ impl<'a> EbAfit<'a> {
 
         Self {
             container,
-            item_list,
+            item_list: computed_item_list,
             layer_list: Vec::new(),
             orientation_variant,
             orientation,
@@ -52,6 +67,14 @@ impl<'a> EbAfit<'a> {
 
     pub fn pack(&mut self) {
         while self.next().is_some() {}
+    }
+
+    fn get_current_item(&self) -> Option<Item> {
+        if let Some(item) = self.item_list.get(self.bn) {
+            Some(item.clone())
+        } else {
+            None
+        }
     }
 
     fn compute_candit_layer(&mut self, item: &Item) {
@@ -130,8 +153,9 @@ impl<'a> Iterator for EbAfit<'a> {
     type Item = ();
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(item) = self.item_list.get(self.bn) {
-            self.compute_candit_layer(item);
+        let item = self.get_current_item();
+        if item.is_some() {
+            self.compute_candit_layer(&item.unwrap());
             self.bn += 1;
             Some(())
         } else {
