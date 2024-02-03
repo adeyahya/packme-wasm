@@ -1,3 +1,4 @@
+pub mod algo;
 pub mod packing;
 
 #[no_mangle]
