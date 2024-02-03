@@ -7,9 +7,15 @@ struct Vector3 {
     pub z: f64,
 }
 
+struct Layer {
+    pub layer_dim: f64,
+    pub layer_eval: f64,
+}
+
 pub struct EbAfit<'a> {
     container: &'a Container,
     item_list: &'a Vec<Item>,
+    layer_list: Vec<Layer>,
     orientation_variant: OrientationVariant<'a>,
     orientation: Vector3,
     temp: f64,
@@ -17,6 +23,8 @@ pub struct EbAfit<'a> {
     total_box_vol: f64,
     // current box index that being evaluated
     bn: usize,
+
+    same: bool,
 }
 
 impl<'a> EbAfit<'a> {
@@ -32,9 +40,11 @@ impl<'a> EbAfit<'a> {
         Self {
             container,
             item_list,
+            layer_list: Vec::new(),
             orientation_variant,
             orientation,
             total_box_vol,
+            same: false,
             temp: 0.0,
             bn: 0,
         }
@@ -44,7 +54,74 @@ impl<'a> EbAfit<'a> {
         while self.next().is_some() {}
     }
 
-    fn compute_item(&mut self, item: &Item) {}
+    fn compute_candit_layer(&mut self, item: &Item) {
+        let mut exdim: f64;
+        let mut dimdif: f64;
+        let mut dimen2: f64;
+        let mut dimen3: f64;
+        let mut layer_eval = 0.0;
+        let py = self.orientation.y;
+        let px = self.orientation.x;
+        let pz = self.orientation.z;
+
+        for y in 1..=3 {
+            match y {
+                1 => {
+                    exdim = item.dim.0;
+                    dimen2 = item.dim.1;
+                    dimen3 = item.dim.2;
+                }
+                2 => {
+                    exdim = item.dim.1;
+                    dimen2 = item.dim.0;
+                    dimen3 = item.dim.2;
+                }
+                3 => {
+                    exdim = item.dim.2;
+                    dimen2 = item.dim.0;
+                    dimen3 = item.dim.1;
+                }
+                _ => unreachable!(),
+            }
+
+            if exdim > py || (dimen2 > px || dimen3 > pz) && (dimen3 > px || dimen2 > pz) {
+                continue;
+            }
+
+            self.same = false;
+
+            for k in 1..=self.layer_list.len() {
+                if let Some(layer) = self.layer_list.get(k) {
+                    if exdim == layer.layer_dim {
+                        self.same = true;
+                        continue;
+                    }
+                }
+            }
+
+            if self.same {
+                continue;
+            }
+
+            for z in 1..=self.item_list.len() {
+                if let Some(compared_item) = self.item_list.get(z) {
+                    if item != compared_item {
+                        dimdif = (exdim - compared_item.dim.0).abs().min(
+                            (exdim - compared_item.dim.1)
+                                .abs()
+                                .min((exdim - compared_item.dim.2).abs()),
+                        );
+                        layer_eval += dimdif;
+                    }
+                }
+            }
+
+            self.layer_list.push(Layer {
+                layer_eval,
+                layer_dim: exdim,
+            });
+        }
+    }
 }
 
 // implement iterator for the computation loop
@@ -54,12 +131,29 @@ impl<'a> Iterator for EbAfit<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(item) = self.item_list.get(self.bn) {
-            self.compute_item(item);
+            self.compute_candit_layer(item);
             self.bn += 1;
             Some(())
         } else {
             // eof loop for current orientation
             // proceed to next orientation if available
+
+            // sets the evaluation of the first layer in the list to -1
+            if let Some(layer) = self.layer_list.get_mut(0) {
+                layer.layer_eval = -1.0;
+            }
+            // sort layer list
+            self.layer_list.sort_by(|a, b| {
+                if a.layer_eval < b.layer_eval {
+                    std::cmp::Ordering::Less
+                } else if a.layer_eval > b.layer_eval {
+                    std::cmp::Ordering::Greater
+                } else {
+                    a.layer_dim
+                        .partial_cmp(&b.layer_dim)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                }
+            });
             if let Some(orientation) = self.orientation_variant.next() {
                 self.bn = 0;
                 self.orientation = orientation;
