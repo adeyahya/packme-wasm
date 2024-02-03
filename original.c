@@ -1,3 +1,4 @@
+// source from https://github.com/wknechtel/3d-bin-pack
 //**********************
 // INCLUDED HEADER FILES
 //**********************
