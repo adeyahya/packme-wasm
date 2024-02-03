@@ -27,6 +27,7 @@ pub struct EbAfit<'a> {
     same: bool,
 }
 
+// public trait
 impl<'a> EbAfit<'a> {
     pub fn from_input(container: &'a Container, item_list: &'a Vec<Item>) -> Self {
         let mut orientation_variant = OrientationVariant::from_container(container);
@@ -68,7 +69,10 @@ impl<'a> EbAfit<'a> {
     pub fn pack(&mut self) {
         while self.next().is_some() {}
     }
+}
 
+// private trait
+impl<'a> EbAfit<'a> {
     fn get_current_item(&self) -> Option<Item> {
         if let Some(item) = self.item_list.get(self.bn) {
             Some(item.clone())
