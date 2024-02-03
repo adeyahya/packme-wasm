@@ -2,7 +2,6 @@ use super::BinItem;
 
 #[derive(Default, Clone)]
 pub struct Bin {
-    pub name: String,
     pub width: f64,
     pub height: f64,
     pub depth: f64,

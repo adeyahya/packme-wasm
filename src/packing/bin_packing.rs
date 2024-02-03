@@ -12,7 +12,6 @@ impl BinPacking {
             let mut bin_iter = self.bins.iter_mut().peekable();
             while let Some(bin) = bin_iter.peek_mut() {
                 if bin.add_item(item.to_owned().clone()) {
-                    println!("item {}, packed into {}", item.name, bin.name);
                     break;
                 } else {
                     bin_iter.next();
