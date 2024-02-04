@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, default};
 
-use super::{Container, Item};
+use super::{item::ItemDimension, Container, Item};
 
 #[derive(Default)]
 struct Vector3 {
@@ -49,6 +49,21 @@ pub struct EbAfit<'a> {
     scrapmemb: Option<Box<Scrappad>>,
     smallestz: Option<Box<Scrappad>>,
     trash: Option<Box<Scrappad>>,
+
+    bfy: f64,
+    bfx: f64,
+    bfz: f64,
+    boxx: f64,
+    boxy: f64,
+    boxz: f64,
+    boxi: usize,
+    bbfy: f64,
+    bbfx: f64,
+    bbfz: f64,
+    bboxx: f64,
+    bboxy: f64,
+    bboxz: f64,
+    bboxi: usize,
 }
 
 // public trait
@@ -66,7 +81,6 @@ impl<'a> EbAfit<'a> {
 
             for _ in 0..item.quantity {
                 let mut item = item.clone();
-                item.quantity = 1;
                 computed_item_list.push(item);
             }
         }
@@ -102,6 +116,20 @@ impl<'a> EbAfit<'a> {
             scrapmemb: None,
             smallestz: None,
             trash: None,
+            bfy: 0.0,
+            bfx: 0.0,
+            bfz: 0.0,
+            boxx: 0.0,
+            boxy: 0.0,
+            boxz: 0.0,
+            boxi: 0,
+            bbfy: 0.0,
+            bbfx: 0.0,
+            bbfz: 0.0,
+            bboxx: 0.0,
+            bboxy: 0.0,
+            bboxz: 0.0,
+            bboxi: 0,
         }
     }
 
@@ -213,9 +241,9 @@ impl<'a> EbAfit<'a> {
     // RECORDS PROPERLY
     //**********************************************************************
     fn pack_layer(&mut self) -> bool {
-        let lenx = 0.0;
-        let lenz = 0.0;
-        let lpz = 0.0;
+        let mut lenx = 0.0;
+        let mut lenz = 0.0;
+        let mut lpz = 0.0;
         if self.layer_tickness == 0.0 {
             self.is_packing = false;
             return false;
@@ -231,7 +259,11 @@ impl<'a> EbAfit<'a> {
             if let Some(smallestz) = self.smallestz.as_deref() {
                 match (smallestz.pre.as_deref(), smallestz.pos.as_deref()) {
                     //*** SITUATION-1: NO BOXES ON THE RIGHT AND LEFT SIDES ***
-                    (None, None) => {}
+                    (None, None) => {
+                        lenx = smallestz.cumx;
+                        lpz = self.remainpz - smallestz.cumz;
+                        self.find_box(lenx, self.layer_tickness, self.remainpy, lpz, lpz);
+                    }
                     //*** SITUATION-2: NO BOXES ON THE LEFT SIDE ***
                     (None, _) => {}
                     //*** SITUATION-3: NO BOXES ON THE RIGHT SIDE ***
@@ -247,6 +279,141 @@ impl<'a> EbAfit<'a> {
         }
 
         false
+    }
+
+    //**********************************************************************
+    // ANALYZES EACH UNPACKED BOX TO FIND THE BEST FITTING ONE TO
+    // THE EMPTY SPACE GIVEN
+    //**********************************************************************
+    fn analyze_box(
+        &mut self,
+        x: usize,
+        hmx: f64,
+        hy: f64,
+        hmy: f64,
+        hz: f64,
+        hmz: f64,
+        dim1: f64,
+        dim2: f64,
+        dim3: f64,
+    ) {
+        if dim1 <= hmx && dim2 <= hmy && dim3 <= hmz {
+            if dim2 <= hy {
+                if hy - dim2 < self.bfy {
+                    self.boxx = dim1;
+                    self.boxy = dim2;
+                    self.boxz = dim3;
+                    self.bfx = hmx - dim1;
+                    self.bfy = hy - dim2;
+                    self.bfz = (hz - dim3).abs();
+                    self.boxi = x;
+                } else if hy - dim2 == self.bfy && hmx - dim1 < self.bfx {
+                    self.boxx = dim1;
+                    self.boxy = dim2;
+                    self.boxz = dim3;
+                    self.bfx = hmx - dim1;
+                    self.bfy = hy - dim2;
+                    self.bfz = (hz - dim3).abs();
+                    self.boxi = x;
+                } else if hy - dim2 == self.bfy
+                    && hmx - dim1 == self.bfx
+                    && (hz - dim3).abs() < self.bfz
+                {
+                    self.boxx = dim1;
+                    self.boxy = dim2;
+                    self.boxz = dim3;
+                    self.bfx = hmx - dim1;
+                    self.bfy = hy - dim2;
+                    self.bfz = (hz - dim3).abs();
+                    self.boxi = x;
+                }
+            } else {
+                if dim2 - hy < self.bbfy {
+                    self.bboxx = dim1;
+                    self.bboxy = dim2;
+                    self.bboxz = dim3;
+                    self.bbfx = hmx - dim1;
+                    self.bbfy = dim2 - hy;
+                    self.bbfz = (hz - dim3).abs();
+                    self.bboxi = x;
+                } else if dim2 - hy == self.bbfy && hmx - dim1 < self.bbfx {
+                    self.bboxx = dim1;
+                    self.bboxy = dim2;
+                    self.bboxz = dim3;
+                    self.bbfx = hmx - dim1;
+                    self.bbfy = dim2 - hy;
+                    self.bbfz = (hz - dim3).abs();
+                    self.bboxi = x;
+                } else if dim2 - hy == self.bbfy
+                    && hmx - dim1 == self.bbfx
+                    && (hz - dim3).abs() < self.bbfz
+                {
+                    self.bboxx = dim1;
+                    self.bboxy = dim2;
+                    self.bboxz = dim3;
+                    self.bbfx = hmx - dim1;
+                    self.bbfy = dim2 - hy;
+                    self.bbfz = (hz - dim3).abs();
+                    self.bboxi = x;
+                }
+            }
+        }
+    }
+
+    //**********************************************************************
+    // FINDS THE MOST PROPER BOXES BY LOOKING AT ALL SIX POSSIBLE
+    // ORIENTATIONS, EMPTY SPACE GIVEN, ADJACENT BOXES, AND PALLET LIMITS
+    //**********************************************************************
+    fn find_box(&mut self, hmx: f64, hy: f64, hmy: f64, hz: f64, hmz: f64) -> () {
+        self.bfx = f64::MAX;
+        self.bfy = f64::MAX;
+        self.bfz = f64::MAX;
+        self.bbfx = f64::MAX;
+        self.bbfy = f64::MAX;
+        self.bbfz = f64::MAX;
+        self.boxi = 0;
+        self.bboxi = 0;
+        let mut y = 0;
+        let mut x = 0;
+        let item_list = self.item_list.clone();
+        let packing_status = self.item_packing_status.clone();
+        while y < item_list.len() {
+            if let Some(item_y) = item_list.get(y) {
+                while x < x + item_y.quantity - 1 {
+                    if let Some(is_packed) = packing_status.get(&x) {
+                        if !*is_packed {
+                            break;
+                        }
+                    }
+                    x += 1;
+                }
+                if let Some(is_packed) = packing_status.get(&x) {
+                    if *is_packed {
+                        continue;
+                    }
+                }
+                if x > item_list.len() {
+                    return ();
+                }
+                let dim_x = match item_list.get(x) {
+                    Some(item) => item.dim.clone(),
+                    None => ItemDimension::default(),
+                };
+                self.analyze_box(x, hmx, hy, hmy, hz, hmz, dim_x.0, dim_x.1, dim_x.2);
+                if dim_x.0 == dim_x.2 && dim_x.2 == dim_x.1 {
+                    continue;
+                }
+                self.analyze_box(x, hmx, hy, hmy, hz, hmz, dim_x.0, dim_x.2, dim_x.1);
+                self.analyze_box(x, hmx, hy, hmy, hz, hmz, dim_x.1, dim_x.0, dim_x.2);
+                self.analyze_box(x, hmx, hy, hmy, hz, hmz, dim_x.1, dim_x.2, dim_x.0);
+                self.analyze_box(x, hmx, hy, hmy, hz, hmz, dim_x.0, dim_x.2, dim_x.1);
+                self.analyze_box(x, hmx, hy, hmy, hz, hmz, dim_x.2, dim_x.0, dim_x.1);
+                self.analyze_box(x, hmx, hy, hmy, hz, hmz, dim_x.2, dim_x.1, dim_x.0);
+
+                y += item_y.quantity;
+            }
+        }
+        ()
     }
 }
 
