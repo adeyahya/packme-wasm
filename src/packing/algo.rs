@@ -1,4 +1,4 @@
-use std::{collections::HashMap, default};
+use std::collections::HashMap;
 
 use super::{item::ItemDimension, Container, Item};
 
@@ -40,6 +40,7 @@ pub struct EbAfit<'a> {
     packedy: f64,
     is_packing: bool,
     layer_tickness: f64,
+    pre_layer: f64,
     remainpy: f64,
     remainpz: f64,
     packed_num_box: usize,
@@ -56,14 +57,22 @@ pub struct EbAfit<'a> {
     boxx: f64,
     boxy: f64,
     boxz: f64,
-    boxi: usize,
+    boxi: Option<usize>,
+    cboxi: Option<usize>,
+    bboxi: Option<usize>,
+    cboxx: f64,
+    cboxy: f64,
+    cboxz: f64,
     bbfy: f64,
     bbfx: f64,
     bbfz: f64,
     bboxx: f64,
     bboxy: f64,
     bboxz: f64,
-    bboxi: usize,
+    lilz: f64,
+    evened: bool,
+    layer_done: bool,
+    layer_in_layer: Option<f64>,
 }
 
 // public trait
@@ -80,7 +89,7 @@ impl<'a> EbAfit<'a> {
             };
 
             for _ in 0..item.quantity {
-                let mut item = item.clone();
+                let item = item.clone();
                 computed_item_list.push(item);
             }
         }
@@ -107,6 +116,7 @@ impl<'a> EbAfit<'a> {
             packedy: 0.0,
             is_packing: false,
             layer_tickness: 0.0,
+            pre_layer: 0.0,
             remainpy: 0.0,
             remainpz: 0.0,
             packed_num_box: 0,
@@ -122,14 +132,22 @@ impl<'a> EbAfit<'a> {
             boxx: 0.0,
             boxy: 0.0,
             boxz: 0.0,
-            boxi: 0,
+            boxi: None,
+            cboxi: None,
+            bboxi: None,
+            cboxx: 0.0,
+            cboxy: 0.0,
+            cboxz: 0.0,
             bbfy: 0.0,
             bbfx: 0.0,
             bbfz: 0.0,
             bboxx: 0.0,
             bboxy: 0.0,
             bboxz: 0.0,
-            bboxi: 0,
+            lilz: 0.0,
+            evened: false,
+            layer_done: false,
+            layer_in_layer: None,
         }
     }
 
@@ -256,16 +274,179 @@ impl<'a> EbAfit<'a> {
 
         while self.is_quit == false {
             self.find_smallest_z();
-            if let Some(smallestz) = self.smallestz.as_deref() {
-                match (smallestz.pre.as_deref(), smallestz.pos.as_deref()) {
+            if let Some(smz) = self.smallestz.clone().as_deref_mut() {
+                match (smz.pre.as_deref_mut(), smz.pos.as_deref_mut()) {
                     //*** SITUATION-1: NO BOXES ON THE RIGHT AND LEFT SIDES ***
                     (None, None) => {
-                        lenx = smallestz.cumx;
-                        lpz = self.remainpz - smallestz.cumz;
+                        self.smallestz.as_mut().map(|n| {
+                            lenx = n.cumx;
+                            lpz = self.remainpz - n.cumz;
+                            n
+                        });
                         self.find_box(lenx, self.layer_tickness, self.remainpy, lpz, lpz);
+                        self.check_found();
+                        if self.layer_done {
+                            break;
+                        };
+                        if self.evened {
+                            continue;
+                        }
+
+                        if let Some(item_cboxi) = self.item_list.get_mut(self.cboxi.unwrap_or(0)) {
+                            item_cboxi.coord.x = 0.0;
+                            item_cboxi.coord.y = self.packedy;
+                            item_cboxi.coord.z =
+                                self.smallestz.as_ref().map(|n| n.cumz).unwrap_or(0.0);
+                        }
+
+                        if self.smallestz.is_some() {
+                            let smallestz = self.smallestz.as_deref_mut().unwrap();
+                            if self.cboxx == smallestz.cumx {
+                                smallestz.cumz = smallestz.cumz + self.cboxz;
+                            } else {
+                                smallestz.pos = Some(Box::new(Scrappad::default()));
+                                let mut s_pos = smallestz.pos.clone().unwrap();
+                                s_pos.pos = None;
+                                s_pos.pre = Some(Box::new(smallestz.clone()));
+                                s_pos.cumx = smallestz.cumx;
+                                s_pos.cumz = smallestz.cumz;
+                                smallestz.cumx = self.cboxx;
+                                smallestz.cumz = smallestz.cumz + self.cboxz;
+                            }
+                        }
                     }
                     //*** SITUATION-2: NO BOXES ON THE LEFT SIDE ***
-                    (None, _) => {}
+                    (None, _) => {
+                        self.smallestz.as_ref().map(|n| {
+                            lenx = n.cumx;
+                            n.pos.as_ref().map(|npos| {
+                                lenz = npos.cumz - n.cumz;
+                            });
+                            lpz = self.remainpz - n.cumz;
+                        });
+
+                        self.find_box(lenx, self.layer_tickness, self.remainpy, lenz, lpz);
+                        self.check_found();
+                        if self.layer_done {
+                            break;
+                        }
+                        if self.evened {
+                            continue;
+                        }
+
+                        let cboxi = self.cboxi.unwrap_or(0);
+                        if let Some(item_cboxi) = self.item_list.get_mut(cboxi) {
+                            item_cboxi.coord.y = self.packedy;
+                            item_cboxi.coord.z =
+                                self.smallestz.as_ref().map(|n| n.cumz).unwrap_or(0.0);
+
+                            let (cumx, cumz) = self
+                                .smallestz
+                                .as_ref()
+                                .map(|n| (n.cumx, n.cumz))
+                                .unwrap_or((0.0, 0.0));
+                            if self.cboxx == cumx {
+                                item_cboxi.coord.x = 0.0;
+                                let (pcumx, pcumz) = self
+                                    .smallestz
+                                    .as_ref()
+                                    .map(|n| {
+                                        if let Some(np) = &n.pos {
+                                            return (np.cumx, np.cumz);
+                                        } else {
+                                            return (0.0, 0.0);
+                                        }
+                                    })
+                                    .unwrap_or((0.0, 0.0));
+                                if cumz + self.cboxz == pcumz {
+                                    self.smallestz.as_mut().map(|n| {
+                                        n.cumz = pcumz;
+                                        n.cumx = pcumx;
+                                    });
+                                    self.trash = self.smallestz.clone().unwrap_or_default().pos;
+                                    let spp = self
+                                        .smallestz
+                                        .clone()
+                                        .unwrap_or_default()
+                                        .pos
+                                        .unwrap_or_default()
+                                        .pos;
+                                    self.smallestz.as_mut().map(|n| n.pos = spp);
+
+                                    let smallest_clone = self.smallestz.clone();
+                                    // smallestz->pos->pre = smallestz
+                                    self.smallestz.as_mut().map(|n| {
+                                        n.pos.as_mut().map(|np| {
+                                            np.pre = smallest_clone;
+                                        })
+                                    });
+                                } else {
+                                    let cboxz = self.cboxz;
+                                    self.smallestz
+                                        .as_deref_mut()
+                                        .map(|n| n.cumz = n.cumz + cboxz);
+                                }
+                            } else {
+                                let smallestz = self.smallestz.clone().unwrap_or_default();
+                                self.item_list.get_mut(self.cboxi.unwrap_or(0)).map(|item| {
+                                    item.coord.x = smallestz.cumx - self.cboxx;
+                                });
+                                if smallestz.cumz + self.cboxz
+                                    == smallestz.pos.unwrap_or_default().cumz
+                                {
+                                    self.smallestz
+                                        .as_deref_mut()
+                                        .map(|n| n.cumx = n.cumx - self.cboxx);
+                                } else {
+                                    // smallestZ.Post.Pre = new ScrapPad();
+                                    self.smallestz.as_mut().map(|n| {
+                                        n.pos.as_deref_mut().map(|npos| {
+                                            npos.pre = Some(Box::new(Scrappad::default()));
+                                        });
+                                    });
+                                    let smallestz = self.smallestz.clone();
+                                    let npos_clone = self.smallestz.clone().unwrap_or_default().pos;
+                                    self.smallestz.as_mut().map(|n| {
+                                        n.pos.as_deref_mut().map(|npos| {
+                                            npos.pre.as_deref_mut().map(|npos_pre| {
+                                                // smallestZ.Post.Pre.Post = smallestZ.Post;
+                                                npos_pre.pos = npos_clone;
+                                                // smallestZ.Post.Pre.Pre = smallestZ;
+                                                npos_pre.pre = smallestz;
+                                            });
+                                        });
+                                    });
+                                    // smallestZ.Post = smallestZ.Post.Pre;
+                                    let npos_pre_clone = self
+                                        .smallestz
+                                        .clone()
+                                        .unwrap_or_default()
+                                        .pos
+                                        .unwrap_or_default()
+                                        .pre;
+                                    self.smallestz
+                                        .as_deref_mut()
+                                        .map(|n| n.pos = npos_pre_clone);
+
+                                    // smallestZ.Post.CumX = smallestZ.CumX;
+                                    self.smallestz.as_deref_mut().map(|n| {
+                                        n.pos.as_deref_mut().map(|npos| {
+                                            npos.cumx = n.cumx;
+                                        });
+                                        n.cumx = n.cumx - self.cboxx;
+                                        // smallestZ.CumX = smallestZ.CumX - cboxx;
+                                    });
+
+                                    // smallestZ.Post.CumZ = smallestZ.CumZ + cboxz;
+                                    self.smallestz.as_deref_mut().map(|n| {
+                                        n.pos.as_deref_mut().map(|npos| {
+                                            npos.cumz = n.cumz + self.cboxz;
+                                        });
+                                    });
+                                }
+                            }
+                        }
+                    }
                     //*** SITUATION-3: NO BOXES ON THE RIGHT SIDE ***
                     (_, None) => {}
                     (Some(pre), Some(pos)) => {
@@ -306,7 +487,7 @@ impl<'a> EbAfit<'a> {
                     self.bfx = hmx - dim1;
                     self.bfy = hy - dim2;
                     self.bfz = (hz - dim3).abs();
-                    self.boxi = x;
+                    self.boxi = Some(x);
                 } else if hy - dim2 == self.bfy && hmx - dim1 < self.bfx {
                     self.boxx = dim1;
                     self.boxy = dim2;
@@ -314,7 +495,7 @@ impl<'a> EbAfit<'a> {
                     self.bfx = hmx - dim1;
                     self.bfy = hy - dim2;
                     self.bfz = (hz - dim3).abs();
-                    self.boxi = x;
+                    self.boxi = Some(x);
                 } else if hy - dim2 == self.bfy
                     && hmx - dim1 == self.bfx
                     && (hz - dim3).abs() < self.bfz
@@ -325,7 +506,7 @@ impl<'a> EbAfit<'a> {
                     self.bfx = hmx - dim1;
                     self.bfy = hy - dim2;
                     self.bfz = (hz - dim3).abs();
-                    self.boxi = x;
+                    self.boxi = Some(x);
                 }
             } else {
                 if dim2 - hy < self.bbfy {
@@ -335,7 +516,7 @@ impl<'a> EbAfit<'a> {
                     self.bbfx = hmx - dim1;
                     self.bbfy = dim2 - hy;
                     self.bbfz = (hz - dim3).abs();
-                    self.bboxi = x;
+                    self.bboxi = Some(x);
                 } else if dim2 - hy == self.bbfy && hmx - dim1 < self.bbfx {
                     self.bboxx = dim1;
                     self.bboxy = dim2;
@@ -343,7 +524,7 @@ impl<'a> EbAfit<'a> {
                     self.bbfx = hmx - dim1;
                     self.bbfy = dim2 - hy;
                     self.bbfz = (hz - dim3).abs();
-                    self.bboxi = x;
+                    self.bboxi = Some(x);
                 } else if dim2 - hy == self.bbfy
                     && hmx - dim1 == self.bbfx
                     && (hz - dim3).abs() < self.bbfz
@@ -354,7 +535,7 @@ impl<'a> EbAfit<'a> {
                     self.bbfx = hmx - dim1;
                     self.bbfy = dim2 - hy;
                     self.bbfz = (hz - dim3).abs();
-                    self.bboxi = x;
+                    self.bboxi = Some(x);
                 }
             }
         }
@@ -371,8 +552,6 @@ impl<'a> EbAfit<'a> {
         self.bbfx = f64::MAX;
         self.bbfy = f64::MAX;
         self.bbfz = f64::MAX;
-        self.boxi = 0;
-        self.bboxi = 0;
         let mut y = 0;
         let mut x = 0;
         let item_list = self.item_list.clone();
@@ -414,6 +593,90 @@ impl<'a> EbAfit<'a> {
             }
         }
         ()
+    }
+
+    //************************************************************
+    // AFTER FINDING EACH BOX, THE CANDIDATE BOXES AND THE
+    // CONDITION OF THE LAYER ARE EXAMINED
+    //************************************************************
+    fn check_found(&mut self) {
+        self.evened = false;
+        if let Some(boxi) = self.boxi {
+            self.cboxi = Some(boxi);
+            self.cboxx = self.boxx;
+            self.cboxy = self.boxy;
+            self.cboxz = self.boxz;
+        } else {
+            if let Some(smallestz) = self.smallestz.as_deref_mut() {
+                if self.bboxi.is_some()
+                    && (self.layer_in_layer.is_some()
+                        || smallestz.pre.is_none() && smallestz.pos.is_none())
+                {
+                    if self.layer_in_layer.is_none() {
+                        self.pre_layer = self.layer_tickness;
+                        self.lilz = smallestz.cumz;
+                    }
+                    self.cboxi = self.bboxi;
+                    self.cboxx = self.bboxx;
+                    self.cboxy = self.bboxy;
+                    self.cboxz = self.bboxz;
+                    let layer_in_layer = self.layer_in_layer.unwrap_or(0.0);
+                    self.layer_in_layer = Some(layer_in_layer + self.bboxy - self.layer_tickness);
+                    self.layer_tickness = self.bboxy;
+                } else {
+                    if smallestz.pre.is_none() && smallestz.pos.is_none() {
+                        self.layer_done = true;
+                    } else {
+                        self.evened = true;
+                        if smallestz.pre.is_none() {
+                            self.trash = smallestz.pos.clone();
+                            let s_pos = smallestz.pos.clone();
+                            if let Some(s_pos) = s_pos.as_deref() {
+                                smallestz.cumx = s_pos.cumx;
+                                smallestz.cumz = s_pos.cumz;
+                                smallestz.pos = s_pos.pos.clone();
+                            }
+                            let smallestz_clone = smallestz.clone();
+                            if let Some(s_pos) = smallestz.pos.as_deref_mut() {
+                                s_pos.pre = Some(Box::new(smallestz_clone));
+                            }
+                        } else if smallestz.pos.is_none() {
+                            if let Some(s_pre) = smallestz.pre.as_deref_mut() {
+                                s_pre.pos = None;
+                                s_pre.cumx = smallestz.cumx;
+                            }
+                        } else {
+                            if let (Some(s_pre), Some(s_pos)) =
+                                (smallestz.pre.as_deref_mut(), smallestz.pos.as_deref_mut())
+                            {
+                                if s_pre.cumz == s_pos.cumz {
+                                    s_pre.pos = s_pos.pos.clone();
+
+                                    if s_pos.pos.is_some() {
+                                        let s_pos_pos = s_pos.pos.as_deref_mut().unwrap();
+                                        s_pos_pos.pre = Some(Box::new(s_pre.clone()));
+                                    }
+
+                                    s_pre.cumx = s_pos.cumx;
+                                } else {
+                                    let smallestz_clone = smallestz.clone();
+                                    if let (Some(s_pre), Some(s_pos)) =
+                                        (smallestz.pre.as_deref_mut(), smallestz.pos.as_deref_mut())
+                                    {
+                                        s_pre.pos = smallestz_clone.clone().pos.clone();
+                                        s_pos.pre = smallestz_clone.clone().pre.clone();
+                                        if s_pre.cumz < s_pos.cumz {
+                                            s_pre.cumx = smallestz_clone.cumx;
+                                        }
+                                    }
+                                }
+                            }
+                            self.smallestz = None;
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
