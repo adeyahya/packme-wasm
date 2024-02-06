@@ -1,4 +1,4 @@
-use std::{collections::HashMap, iter::Scan};
+use std::collections::HashMap;
 
 use super::{item::ItemDimension, Container, Item};
 
@@ -9,6 +9,7 @@ struct Vector3 {
     pub z: f64,
 }
 
+#[derive(Clone)]
 struct Layer {
     pub layer_dim: f64,
     pub layer_eval: f64,
@@ -47,7 +48,6 @@ pub struct EbAfit<'a> {
     is_packing_best: bool,
     is_hundred_percent_packed: bool,
     is_quit: bool,
-    scrappad: Scrappad,
     scrapfirst: Option<Box<Scrappad>>,
     scrapmemb: Option<Box<Scrappad>>,
     smallestz: Option<Box<Scrappad>>,
@@ -126,7 +126,6 @@ impl<'a> EbAfit<'a> {
             remainpz: 0.0,
             packed_num_box: 0,
             is_quit: false,
-            scrappad: Scrappad::default(),
             scrapfirst: Some(Box::new(Scrappad::default())),
             scrapmemb: None,
             smallestz: None,
@@ -158,7 +157,7 @@ impl<'a> EbAfit<'a> {
     }
 
     pub fn pack(&mut self) {
-        while self.next().is_some() {}
+        while !self.is_hundred_percent_packed && self.next().is_some() {}
     }
 }
 
@@ -264,13 +263,13 @@ impl<'a> EbAfit<'a> {
     // PACKS THE BOXES FOUND AND ARRANGES ALL VARIABLES AND
     // RECORDS PROPERLY
     //**********************************************************************
-    fn pack_layer(&mut self) -> bool {
+    fn pack_layer(&mut self) -> () {
         let mut lenx = 0.0;
         let mut lenz = 0.0;
         let mut lpz = 0.0;
         if self.layer_tickness == 0.0 {
             self.is_packing = false;
-            return false;
+            return ();
         };
 
         if let Some(scrapfirst) = self.scrapfirst.as_mut() {
@@ -320,6 +319,7 @@ impl<'a> EbAfit<'a> {
                                 smallestz.cumz = smallestz.cumz + self.cboxz;
                             }
                         }
+                        self.volume_check();
                     }
                     //*** SITUATION-2: NO BOXES ON THE LEFT SIDE ***
                     (None, _) => {
@@ -452,6 +452,7 @@ impl<'a> EbAfit<'a> {
                                 }
                             }
                         }
+                        self.volume_check();
                     }
                     //*** SITUATION-3: NO BOXES ON THE RIGHT SIDE ***
                     (Some(s_pre), None) => {
@@ -513,10 +514,10 @@ impl<'a> EbAfit<'a> {
                                 });
                             }
                         }
+                        self.volume_check();
                     }
+                    //*** SITUATION-4: THERE ARE BOXES ON BOTH OF THE SIDES ***
                     (Some(mut pre), Some(mut pos)) => {
-                        //*** SITUATION-4: THERE ARE BOXES ON BOTH OF THE SIDES ***
-
                         //*** SUBSITUATION-4A: SIDES ARE EQUAL TO EACH OTHER ***
                         if pre.cumz == pos.cumz {
                             self.smallestz.as_deref_mut().map(|n| {
@@ -614,11 +615,12 @@ impl<'a> EbAfit<'a> {
                                         self.smallestz.clone().unwrap().cumx - self.cboxx;
                                 }
                             }
+                            self.volume_check();
                         } else {
                             //*** SUBSITUATION-4B: SIDES ARE NOT EQUAL TO EACH OTHER ***
                             let smallestz = self.smallestz.clone().unwrap();
                             lenx = smallestz.cumx - pre.cumx;
-                            lenx = pre.cumz - smallestz.cumz;
+                            lenz = pre.cumz - smallestz.cumz;
                             lpz = self.remainpz - smallestz.cumz;
                             self.find_box(lenx, self.layer_tickness, self.remainpy, lenz, lpz);
                             self.check_found();
@@ -666,15 +668,13 @@ impl<'a> EbAfit<'a> {
                                     pre.cumz = smallestz.cumz + self.cboxz;
                                 }
                             }
+                            self.volume_check();
                         }
-
-                        self.volume_check();
                     }
                 }
             }
         }
-
-        false
+        ()
     }
 
     //**********************************************************************
@@ -909,6 +909,7 @@ impl<'a> EbAfit<'a> {
         });
 
         if self.is_packing_best {
+            println!("")
         } else if self.packed_vol == self.container.get_volume()
             || self.packed_vol == self.total_box_vol
         {
@@ -930,6 +931,7 @@ impl<'a> Iterator for EbAfit<'a> {
             self.bn += 1;
             Some(())
         } else {
+            self.is_packing_best = true;
             // sets the evaluation of the first layer in the list to -1
             if let Some(layer) = self.layer_list.get_mut(0) {
                 layer.layer_eval = -1.0;
@@ -950,7 +952,9 @@ impl<'a> Iterator for EbAfit<'a> {
             self.item_packing_status = HashMap::new();
             let mut orientation_peekable = self.orientation_variant.clone().peekable();
             let orientation = orientation_peekable.peek().unwrap();
-            for layer in self.layer_list.iter() {
+            let item_list = self.item_list.clone();
+            let layer_list = self.layer_list.clone();
+            for layer in layer_list.iter() {
                 self.iteration_count += 1;
                 self.packed_vol = 0.0;
                 self.packedy = 0.0;
@@ -959,6 +963,28 @@ impl<'a> Iterator for EbAfit<'a> {
                 self.remainpy = orientation.y;
                 self.remainpz = orientation.z;
                 self.packed_num_box = 0 as usize;
+
+                for _ in item_list.iter() {
+                    self.layer_in_layer = None;
+                    self.layer_done = false;
+                    self.pack_layer();
+                    self.packedy = self.packedy + self.layer_tickness;
+                    self.remainpy = orientation.y - self.packedy;
+
+                    if self.layer_in_layer.is_some() {
+                        let prepackedy = self.packedy;
+                        let preremainpy = self.remainpy;
+                        self.remainpy = self.layer_tickness - self.pre_layer;
+                        self.packedy = self.packedy - self.layer_tickness + self.pre_layer;
+                        self.remainpz = self.lilz;
+                        self.layer_tickness = self.layer_in_layer.unwrap();
+                        self.layer_done = false;
+                        self.pack_layer();
+                        self.packedy = prepackedy;
+                        self.remainpy = preremainpy;
+                        self.remainpz = orientation.z;
+                    }
+                }
             }
 
             // eof loop for current orientation
