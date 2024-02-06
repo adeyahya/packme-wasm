@@ -25,11 +25,12 @@ struct Scrappad {
 
 pub struct EbAfit<'a> {
     pub container: &'a Container,
+    pub best_orientation_variant: usize,
+    pub best_vol: f64,
     item_list: Vec<Item>,
     item_packing_status: HashMap<usize, bool>,
     layer_list: Vec<Layer>,
     orientation_variant: OrientationVariant<'a>,
-    best_orientation_variant: usize,
     orientation: Vector3,
     pub temp: f64,
     // sum of volume of all item / box
@@ -74,7 +75,6 @@ pub struct EbAfit<'a> {
     bboxy: f64,
     bboxz: f64,
     lilz: f64,
-    best_vol: f64,
     evened: bool,
     layer_done: bool,
     layer_in_layer: Option<f64>,
