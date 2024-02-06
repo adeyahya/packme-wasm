@@ -987,6 +987,10 @@ impl<'a> Iterator for EbAfit<'a> {
                 }
             }
 
+            if self.is_hundred_percent_packed {
+                return None;
+            }
+
             // eof loop for current orientation
             // proceed to next orientation if available
             if let Some(orientation) = self.orientation_variant.next() {
@@ -1004,7 +1008,7 @@ impl<'a> Iterator for EbAfit<'a> {
 // of the container
 #[derive(Clone)]
 struct OrientationVariant<'a> {
-    current_variant: usize,
+    pub current_variant: usize,
     container: &'a Container,
 }
 
