@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, iter::Scan};
 
 use super::{item::ItemDimension, Container, Item};
 
@@ -40,10 +40,12 @@ pub struct EbAfit<'a> {
     packedy: f64,
     is_packing: bool,
     layer_tickness: f64,
-    pre_layer: f64,
     remainpy: f64,
     remainpz: f64,
     packed_num_box: usize,
+    pre_layer: f64,
+    is_packing_best: bool,
+    is_hundred_percent_packed: bool,
     is_quit: bool,
     scrappad: Scrappad,
     scrapfirst: Option<Box<Scrappad>>,
@@ -51,6 +53,7 @@ pub struct EbAfit<'a> {
     smallestz: Option<Box<Scrappad>>,
     trash: Option<Box<Scrappad>>,
 
+    px: f64,
     bfy: f64,
     bfx: f64,
     bfz: f64,
@@ -115,6 +118,8 @@ impl<'a> EbAfit<'a> {
             packed_vol: 0.0,
             packedy: 0.0,
             is_packing: false,
+            is_hundred_percent_packed: false,
+            is_packing_best: false,
             layer_tickness: 0.0,
             pre_layer: 0.0,
             remainpy: 0.0,
@@ -126,6 +131,7 @@ impl<'a> EbAfit<'a> {
             scrapmemb: None,
             smallestz: None,
             trash: None,
+            px: 0.0,
             bfy: 0.0,
             bfx: 0.0,
             bfz: 0.0,
@@ -448,12 +454,221 @@ impl<'a> EbAfit<'a> {
                         }
                     }
                     //*** SITUATION-3: NO BOXES ON THE RIGHT SIDE ***
-                    (_, None) => {}
-                    (Some(pre), Some(pos)) => {
+                    (Some(s_pre), None) => {
+                        let smallestz = self.smallestz.clone().unwrap();
+                        lenx = smallestz.cumx - s_pre.cumx;
+                        lenz = s_pre.cumz - smallestz.cumz;
+                        lpz = self.remainpz - smallestz.cumz;
+                        self.find_box(lenx, self.layer_tickness, self.remainpy, lenz, lpz);
+                        self.check_found();
+
+                        if self.layer_done {
+                            break;
+                        };
+
+                        if self.evened {
+                            continue;
+                        };
+
+                        self.item_list.get_mut(self.cboxi.unwrap_or(0)).map(|n| {
+                            n.coord.y = self.packedy;
+                            n.coord.z = smallestz.cumz;
+                            n.coord.x = s_pre.cumx;
+                        });
+
+                        if self.cboxx == smallestz.cumx - s_pre.cumx {
+                            if smallestz.cumz + self.cboxz == s_pre.cumz {
+                                self.smallestz.as_deref_mut().map(|n| {
+                                    n.pre.as_deref_mut().map(|npre| {
+                                        npre.cumx = n.cumx;
+                                        npre.pos = None;
+                                    });
+                                });
+                            } else {
+                                self.smallestz.as_deref_mut().map(|n| {
+                                    n.cumz = n.cumz + self.cboxz;
+                                });
+                            }
+                        } else {
+                            if smallestz.cumz + self.cboxz == s_pre.cumz {
+                                self.smallestz.as_deref_mut().map(|n| {
+                                    n.pre.as_deref_mut().map(|npre| {
+                                        npre.cumx = npre.cumx + self.cboxx;
+                                    });
+                                });
+                            } else {
+                                self.smallestz.as_deref_mut().map(|n| {
+                                    n.pre.as_deref_mut().map(|npre| {
+                                        npre.pos = Some(Box::new(Scrappad::default()));
+                                        npre.pos.as_deref_mut().map(|nprepos| {
+                                            nprepos.pre = smallestz.pre.clone();
+                                            nprepos.pos = Some(smallestz.clone());
+                                        });
+                                        *npre = *npre.pos.clone().unwrap();
+                                        npre.pre.as_deref_mut().map(|nprepre| {
+                                            npre.cumx = nprepre.cumx + self.cboxx;
+                                            npre.cumz = n.cumz + self.cboxz;
+                                        });
+                                    });
+                                });
+                            }
+                        }
+                    }
+                    (Some(mut pre), Some(mut pos)) => {
                         //*** SITUATION-4: THERE ARE BOXES ON BOTH OF THE SIDES ***
 
                         //*** SUBSITUATION-4A: SIDES ARE EQUAL TO EACH OTHER ***
-                        if pre.cumz == pos.cumz {}
+                        if pre.cumz == pos.cumz {
+                            self.smallestz.as_deref_mut().map(|n| {
+                                n.pre.as_deref_mut().map(|npre| {
+                                    lenx = n.cumx - npre.cumx;
+                                    lenz = npre.cumz - n.cumz;
+                                    lpz = self.remainpz - n.cumz;
+                                });
+                            });
+                            self.find_box(lenx, self.layer_tickness, self.remainpy, lenz, lpz);
+                            self.check_found();
+
+                            if self.layer_done {
+                                break;
+                            };
+
+                            if self.evened {
+                                continue;
+                            };
+
+                            let smallestz = self.smallestz.clone().unwrap();
+                            self.item_list
+                                .get_mut(self.cboxi.clone().unwrap_or(0))
+                                .map(|n| {
+                                    n.coord.y = self.packedy;
+                                    n.coord.z = smallestz.cumz;
+                                });
+
+                            if self.cboxx == smallestz.cumx - pre.cumx {
+                                self.item_list
+                                    .get_mut(self.cboxi.clone().unwrap_or(0))
+                                    .map(|n| {
+                                        n.coord.y = pre.cumx;
+                                    });
+
+                                if smallestz.cumz + self.cboxz == pos.cumz {
+                                    pre.cumx = pos.cumx;
+
+                                    if pos.pos.is_some() {
+                                        pre.pos = pos.pos.clone();
+                                        pos.pos.as_deref_mut().unwrap().pre =
+                                            Some(Box::new(pre.clone()));
+                                    } else {
+                                        pre.pos = None;
+                                    }
+                                } else {
+                                    self.smallestz.as_deref_mut().map(|n| {
+                                        n.cumz = n.cumz + self.cboxz;
+                                    });
+                                }
+                            } else if pre.cumx < self.px - smallestz.cumx {
+                                if smallestz.cumx + self.cboxz == pre.cumz {
+                                    self.smallestz.as_deref_mut().map(|n| {
+                                        n.cumx = n.cumx - self.cboxx;
+                                    });
+                                    self.item_list.get_mut(self.cboxi.unwrap_or(0)).map(|n| {
+                                        n.coord.x = self.smallestz.clone().unwrap().cumx;
+                                    });
+                                } else {
+                                    self.item_list.get_mut(self.cboxi.unwrap_or(0)).map(|n| {
+                                        n.coord.x = pre.cumx;
+                                    });
+                                    pre.pos = Some(Box::new(Scrappad::default()));
+
+                                    pre.pos.as_deref_mut().unwrap().pre =
+                                        Some(Box::new(pre.clone()));
+                                    pre.pos.as_deref_mut().unwrap().pos = self.smallestz.clone();
+                                    let mut prepos = pre.pos.clone();
+                                    pre = prepos.as_deref_mut().unwrap();
+                                    pre.cumx = pre.clone().pre.unwrap().cumx + self.cboxx;
+                                    pre.cumz = self.smallestz.clone().unwrap().cumz + self.cboxz;
+                                }
+                            } else {
+                                let smallestz = self.smallestz.clone().unwrap();
+                                if smallestz.cumz + self.cboxz == pre.cumz {
+                                    pre.cumx = pre.cumx + self.cboxx;
+                                    self.item_list.get_mut(self.cboxi.unwrap_or(0)).map(|n| {
+                                        n.coord.x = pre.cumx;
+                                    });
+                                } else {
+                                    self.item_list.get_mut(self.cboxi.unwrap_or(0)).map(|n| {
+                                        n.coord.x =
+                                            self.smallestz.clone().unwrap().cumx - self.cboxx;
+                                    });
+                                    pos.pre = Some(Box::new(Scrappad::default()));
+
+                                    pos.pre.as_deref_mut().unwrap().pos =
+                                        Some(Box::new(pos.clone()));
+                                    pos.pre.as_deref_mut().unwrap().pre = self.smallestz.clone();
+                                    let mut pospre = pos.pre.clone();
+                                    pos = pospre.as_deref_mut().unwrap();
+                                    pos.cumx = self.smallestz.clone().unwrap().cumx;
+                                    pos.cumx = self.smallestz.clone().unwrap().cumz + self.cboxz;
+                                    self.smallestz.as_deref_mut().unwrap().cumx =
+                                        self.smallestz.clone().unwrap().cumx - self.cboxx;
+                                }
+                            }
+                        } else {
+                            //*** SUBSITUATION-4B: SIDES ARE NOT EQUAL TO EACH OTHER ***
+                            let smallestz = self.smallestz.clone().unwrap();
+                            lenx = smallestz.cumx - pre.cumx;
+                            lenx = pre.cumz - smallestz.cumz;
+                            lpz = self.remainpz - smallestz.cumz;
+                            self.find_box(lenx, self.layer_tickness, self.remainpy, lenz, lpz);
+                            self.check_found();
+
+                            if self.layer_done {
+                                break;
+                            }
+
+                            if self.evened {
+                                continue;
+                            }
+
+                            self.item_list.get_mut(self.cboxi.unwrap_or(0)).map(|n| {
+                                n.coord.y = self.packedy;
+                                n.coord.z = smallestz.cumz;
+                                n.coord.x = pre.cumx;
+                            });
+
+                            if self.cboxx == smallestz.cumx - pre.cumx {
+                                if smallestz.cumz + self.cboxz == pre.cumz {
+                                    pre.cumx = smallestz.cumx;
+                                    pre.pos = Some(Box::new(pos.clone()));
+                                    pos.pre = Some(Box::new(pre.clone()));
+                                } else {
+                                    self.smallestz.as_deref_mut().unwrap().cumz =
+                                        smallestz.cumz + self.cboxz;
+                                }
+                            } else {
+                                if smallestz.cumz + self.cboxz == pre.cumz {
+                                    pre.cumx = pre.cumx + self.cboxx;
+                                } else if smallestz.cumz + self.cboxz == pos.cumz {
+                                    self.item_list.get_mut(self.cboxi.unwrap_or(0)).map(|n| {
+                                        n.coord.x = smallestz.cumx - self.cboxx;
+                                    });
+                                    self.smallestz.as_deref_mut().unwrap().cumx =
+                                        smallestz.cumx - self.cboxx;
+                                } else {
+                                    pre.pos = Some(Box::new(Scrappad::default()));
+                                    pre.pos.as_deref_mut().unwrap().pre =
+                                        Some(Box::new(pre.clone()));
+                                    pre.pos.as_deref_mut().unwrap().pos = self.smallestz.clone();
+                                    let mut prepos = pre.pos.clone();
+                                    pre = prepos.as_deref_mut().unwrap();
+                                    pre.cumx = pre.pre.as_ref().unwrap().cumx + self.cboxx;
+                                    pre.cumz = smallestz.cumz + self.cboxz;
+                                }
+                            }
+                        }
+
+                        self.volume_check();
                     }
                 }
             }
@@ -676,6 +891,29 @@ impl<'a> EbAfit<'a> {
                     }
                 }
             }
+        }
+    }
+
+    //************************************************************
+    // After packing of each item, the 100% packing condition is checked.
+    //************************************************************
+    fn volume_check(&mut self) {
+        self.item_packing_status
+            .insert(self.cboxi.unwrap_or(0), true);
+        self.item_list.get_mut(self.cboxi.unwrap_or(0)).map(|n| {
+            n.pack_dim.0 = self.cboxx;
+            n.pack_dim.1 = self.cboxy;
+            n.pack_dim.2 = self.cboxz;
+            self.packed_vol = self.packed_vol + n.get_volume();
+            self.packed_num_box += 1;
+        });
+
+        if self.is_packing_best {
+        } else if self.packed_vol == self.container.get_volume()
+            || self.packed_vol == self.total_box_vol
+        {
+            self.is_packing = false;
+            self.is_hundred_percent_packed = true;
         }
     }
 }
