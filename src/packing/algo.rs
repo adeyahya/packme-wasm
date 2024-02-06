@@ -29,6 +29,7 @@ pub struct EbAfit<'a> {
     item_packing_status: HashMap<usize, bool>,
     layer_list: Vec<Layer>,
     orientation_variant: OrientationVariant<'a>,
+    best_orientation_variant: usize,
     orientation: Vector3,
     pub temp: f64,
     // sum of volume of all item / box
@@ -73,6 +74,7 @@ pub struct EbAfit<'a> {
     bboxy: f64,
     bboxz: f64,
     lilz: f64,
+    best_vol: f64,
     evened: bool,
     layer_done: bool,
     layer_in_layer: Option<f64>,
@@ -109,6 +111,7 @@ impl<'a> EbAfit<'a> {
             item_packing_status: HashMap::new(),
             layer_list: Vec::new(),
             orientation_variant,
+            best_orientation_variant: 0,
             orientation,
             total_box_vol,
             same: false,
@@ -150,6 +153,7 @@ impl<'a> EbAfit<'a> {
             bboxy: 0.0,
             bboxz: 0.0,
             lilz: 0.0,
+            best_vol: 0.0,
             evened: false,
             layer_done: false,
             layer_in_layer: None,
@@ -949,10 +953,8 @@ impl<'a> Iterator for EbAfit<'a> {
                 }
             });
 
-            self.item_packing_status = HashMap::new();
             let mut orientation_peekable = self.orientation_variant.clone().peekable();
             let orientation = orientation_peekable.peek().unwrap();
-            let item_list = self.item_list.clone();
             let layer_list = self.layer_list.clone();
             for layer in layer_list.iter() {
                 self.iteration_count += 1;
@@ -963,8 +965,9 @@ impl<'a> Iterator for EbAfit<'a> {
                 self.remainpy = orientation.y;
                 self.remainpz = orientation.z;
                 self.packed_num_box = 0 as usize;
+                self.item_packing_status = HashMap::new();
 
-                for _ in item_list.iter() {
+                while self.is_packing {
                     self.layer_in_layer = None;
                     self.layer_done = false;
                     self.pack_layer();
@@ -987,8 +990,20 @@ impl<'a> Iterator for EbAfit<'a> {
                 }
             }
 
+            if self.packed_vol > self.best_vol {
+                self.best_vol = self.packed_vol;
+                self.best_orientation_variant = self.orientation_variant.current_variant;
+            }
+
             if self.is_hundred_percent_packed {
                 return None;
+            }
+
+            if self.container.length == self.container.height
+                && self.container.height == self.container.width
+            {
+                // this will skip to 5 on .next() call below
+                self.orientation_variant.current_variant = 4;
             }
 
             // eof loop for current orientation
