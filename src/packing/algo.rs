@@ -1,5 +1,7 @@
 use super::{item::ItemDimension, Container, Item};
-use std::{collections::HashMap, iter::Zip};
+use std::collections::HashMap;
+
+const INITIAL_EVAL: f64 = 1000000.0;
 
 #[derive(Default)]
 struct Vector3 {
@@ -242,20 +244,18 @@ impl<'a> EbAfit<'a> {
 
     //********************************************************
     // FINDS THE FIRST TO BE PACKED GAP IN THE LAYER EDGE
-    fn find_smallest_z(&mut self) {
-        //********************************************************
-        if let Some(scrapfirst) = self.scrapfirst.as_mut() {
-            self.scrapmemb = Some(scrapfirst.clone());
-            self.smallestz = Some(scrapfirst.clone());
+    //********************************************************
+    pub fn find_smallest_z(&mut self) {
+        self.scrapmemb = self.scrapfirst.clone();
+        self.smallestz = self.scrapmemb.clone();
 
-            let smallestz = self.smallestz.as_mut().unwrap();
-            let scrapmemb = self.scrapmemb.as_mut().unwrap();
-            while let Some(pos) = scrapmemb.pos.as_deref() {
-                if pos.cumz < smallestz.cumz {
-                    *smallestz = Box::new(pos.clone());
+        while let Some(scrap) = self.scrapmemb.as_mut() {
+            if let Some(pos) = scrap.pos.take() {
+                if pos.cumz < self.smallestz.as_ref().unwrap().cumz {
+                    self.smallestz = Some(Box::new(*pos));
                 }
-                *scrapmemb = Box::new(pos.clone());
             }
+            self.scrapmemb = scrap.pos.take();
         }
     }
 
@@ -317,7 +317,6 @@ impl<'a> EbAfit<'a> {
                                 n.cumz = n.cumz + self.cboxz;
                             }
                         });
-                        self.volume_check();
                     }
                     //*** SITUATION-2: NO BOXES ON THE LEFT SIDE ***
                     (None, _) => {
@@ -450,7 +449,6 @@ impl<'a> EbAfit<'a> {
                                 }
                             }
                         }
-                        self.volume_check();
                     }
                     //*** SITUATION-3: NO BOXES ON THE RIGHT SIDE ***
                     (Some(s_pre), None) => {
@@ -512,7 +510,6 @@ impl<'a> EbAfit<'a> {
                                 });
                             }
                         }
-                        self.volume_check();
                     }
                     //*** SITUATION-4: THERE ARE BOXES ON BOTH OF THE SIDES ***
                     (Some(mut pre), Some(mut pos)) => {
@@ -666,10 +663,10 @@ impl<'a> EbAfit<'a> {
                                     pre.cumz = smallestz.cumz + self.cboxz;
                                 }
                             }
-                            self.volume_check();
                         }
                     }
                 }
+                self.volume_check();
             }
         }
         ()
@@ -923,18 +920,28 @@ impl<'a> EbAfit<'a> {
         {
             self.is_packing = false;
             self.is_hundred_percent_packed = true;
-            println!("{}:{}", self.container.get_volume(), self.packed_vol);
         }
     }
 
+    // Helper function to calculate dimdif
+    fn calculate_dimdif(&mut self, exdim: f64, item_dim: &ItemDimension) -> f64 {
+        let mut dimdif = (exdim - item_dim.0).abs();
+        if (exdim - item_dim.1).abs() < dimdif {
+            dimdif = (exdim - item_dim.1).abs();
+        }
+        if (exdim - item_dim.2).abs() < dimdif {
+            dimdif = (exdim - item_dim.2).abs();
+        }
+        dimdif
+    }
+
     fn find_layer(&mut self, thickness: f64) {
-        let mut exdim = 0.0;
-        let mut dimdif = 0.0;
-        let mut dimen2 = 0.0;
-        let mut dimen3 = 0.0;
-        let mut layer_eval = 0.0;
+        let mut exdim: f64;
+        let mut dimen2: f64;
+        let mut dimen3: f64;
+        let mut layer_eval: f64;
         self.layer_tickness = 0.0;
-        let mut eval = 1000000.0;
+        let mut eval = INITIAL_EVAL;
         let px = self.orientation.x;
         let pz = self.orientation.z;
 
@@ -973,17 +980,7 @@ impl<'a> EbAfit<'a> {
                 {
                     for (z, item_z) in items_list.iter().enumerate() {
                         if x != z && self.item_packing_status.get(&z).unwrap_or(&false) == &false {
-                            dimdif = (exdim - item_z.dim.0).abs();
-
-                            if (exdim - item_z.dim.1).abs() < dimdif {
-                                dimdif = (exdim - item_z.dim.1).abs();
-                            }
-
-                            if (exdim - item_z.dim.2).abs() < dimdif {
-                                dimdif = (exdim - item_z.dim.2).abs();
-                            }
-
-                            layer_eval = layer_eval + dimdif;
+                            layer_eval += self.calculate_dimdif(exdim, &item_z.dim);
                         }
                     }
 
