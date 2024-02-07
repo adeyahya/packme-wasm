@@ -7,10 +7,13 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Launch",
-      "program": "${workspaceFolder}/target/debug/bin_pack_wasm",
-      "args": [],
-      "cwd": "${workspaceFolder}"
+      "name": "Cargo launch",
+      "cargo": {
+        "args": [
+          "build"
+        ]
+      },
+      "args": []
     }
   ]
 }
