@@ -5,7 +5,7 @@ pub struct Container {
 }
 
 impl Container {
-    pub fn new(length: f64, width: f64, height: f64) -> Self {
+    pub fn new(width: f64, height: f64, length: f64) -> Self {
         Self {
             length,
             width,

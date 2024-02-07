@@ -1,14 +1,14 @@
-#[derive(Default, Clone, PartialEq)]
+#[derive(Default, Clone, PartialEq, Debug)]
 pub struct ItemDimension(pub f64, pub f64, pub f64);
 
-#[derive(Default, Clone, PartialEq)]
+#[derive(Default, Clone, PartialEq, Debug)]
 pub struct ItemCoordinate {
     pub x: f64,
     pub y: f64,
     pub z: f64,
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct Item {
     pub quantity: usize,
     pub dim: ItemDimension,

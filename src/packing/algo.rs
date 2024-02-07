@@ -1,6 +1,5 @@
-use std::collections::HashMap;
-
 use super::{item::ItemDimension, Container, Item};
+use std::{collections::HashMap, iter::Zip};
 
 #[derive(Default)]
 struct Vector3 {
@@ -9,13 +8,13 @@ struct Vector3 {
     pub z: f64,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Layer {
     pub layer_dim: f64,
     pub layer_eval: f64,
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 struct Scrappad {
     cumx: f64,
     cumz: f64,
@@ -28,7 +27,7 @@ pub struct EbAfit<'a> {
     pub best_orientation_variant: usize,
     pub best_vol: f64,
     item_list: Vec<Item>,
-    item_packing_status: HashMap<usize, bool>,
+    pub item_packing_status: HashMap<usize, bool>,
     layer_list: Vec<Layer>,
     orientation_variant: OrientationVariant<'a>,
     orientation: Vector3,
@@ -45,7 +44,7 @@ pub struct EbAfit<'a> {
     layer_tickness: f64,
     remainpy: f64,
     remainpz: f64,
-    packed_num_box: usize,
+    pub packed_num_box: usize,
     pre_layer: f64,
     is_packing_best: bool,
     is_hundred_percent_packed: bool,
@@ -54,8 +53,6 @@ pub struct EbAfit<'a> {
     scrapmemb: Option<Box<Scrappad>>,
     smallestz: Option<Box<Scrappad>>,
     trash: Option<Box<Scrappad>>,
-
-    px: f64,
     bfy: f64,
     bfx: f64,
     bfz: f64,
@@ -133,7 +130,6 @@ impl<'a> EbAfit<'a> {
             scrapmemb: None,
             smallestz: None,
             trash: None,
-            px: 0.0,
             bfy: 0.0,
             bfx: 0.0,
             bfz: 0.0,
@@ -212,7 +208,7 @@ impl<'a> EbAfit<'a> {
             self.same = false;
 
             for k in 1..=self.layer_list.len() {
-                if let Some(layer) = self.layer_list.get(k) {
+                if let Some(layer) = self.layer_list.get(k - 1) {
                     if exdim == layer.layer_dim {
                         self.same = true;
                         continue;
@@ -225,7 +221,7 @@ impl<'a> EbAfit<'a> {
             }
 
             for z in 1..=self.item_list.len() {
-                if let Some(compared_item) = self.item_list.get(z) {
+                if let Some(compared_item) = self.item_list.get(z - 1) {
                     if item != compared_item {
                         dimdif = (exdim - compared_item.dim.0).abs().min(
                             (exdim - compared_item.dim.1)
@@ -246,8 +242,8 @@ impl<'a> EbAfit<'a> {
 
     //********************************************************
     // FINDS THE FIRST TO BE PACKED GAP IN THE LAYER EDGE
-    //********************************************************
     fn find_smallest_z(&mut self) {
+        //********************************************************
         if let Some(scrapfirst) = self.scrapfirst.as_mut() {
             self.scrapmemb = Some(scrapfirst.clone());
             self.smallestz = Some(scrapfirst.clone());
@@ -308,21 +304,19 @@ impl<'a> EbAfit<'a> {
                                 self.smallestz.as_ref().map(|n| n.cumz).unwrap_or(0.0);
                         }
 
-                        if self.smallestz.is_some() {
-                            let smallestz = self.smallestz.as_deref_mut().unwrap();
-                            if self.cboxx == smallestz.cumx {
-                                smallestz.cumz = smallestz.cumz + self.cboxz;
+                        self.smallestz.as_deref_mut().map(|n| {
+                            if self.cboxx == n.cumx {
+                                n.cumz = n.cumz + self.cboxz;
                             } else {
-                                smallestz.pos = Some(Box::new(Scrappad::default()));
-                                let mut s_pos = smallestz.pos.clone().unwrap();
-                                s_pos.pos = None;
-                                s_pos.pre = Some(Box::new(smallestz.clone()));
-                                s_pos.cumx = smallestz.cumx;
-                                s_pos.cumz = smallestz.cumz;
-                                smallestz.cumx = self.cboxx;
-                                smallestz.cumz = smallestz.cumz + self.cboxz;
+                                n.pos = Some(Box::new(Scrappad::default()));
+                                n.pos.as_deref_mut().unwrap().pos = None;
+                                n.pos.as_deref_mut().unwrap().pre = Some(Box::new(n.clone()));
+                                n.pos.as_deref_mut().unwrap().cumx = n.cumx;
+                                n.pos.as_deref_mut().unwrap().cumz = n.cumz;
+                                n.cumx = self.cboxx;
+                                n.cumz = n.cumz + self.cboxz;
                             }
-                        }
+                        });
                         self.volume_check();
                     }
                     //*** SITUATION-2: NO BOXES ON THE LEFT SIDE ***
@@ -572,7 +566,7 @@ impl<'a> EbAfit<'a> {
                                         n.cumz = n.cumz + self.cboxz;
                                     });
                                 }
-                            } else if pre.cumx < self.px - smallestz.cumx {
+                            } else if pre.cumx < self.orientation.x - smallestz.cumx {
                                 if smallestz.cumx + self.cboxz == pre.cumz {
                                     self.smallestz.as_deref_mut().map(|n| {
                                         n.cumx = n.cumx - self.cboxx;
@@ -771,6 +765,8 @@ impl<'a> EbAfit<'a> {
         self.bbfx = f64::MAX;
         self.bbfy = f64::MAX;
         self.bbfz = f64::MAX;
+        self.boxi = None;
+        self.bboxi = None;
         let mut y = 0;
         let mut x = 0;
         let item_list = self.item_list.clone();
@@ -782,6 +778,8 @@ impl<'a> EbAfit<'a> {
                         if !*is_packed {
                             break;
                         }
+                    } else {
+                        break;
                     }
                     x += 1;
                 }
@@ -790,22 +788,28 @@ impl<'a> EbAfit<'a> {
                         continue;
                     }
                 }
-                if x > item_list.len() {
+                if x > item_list.len() - 1 {
                     return ();
                 }
                 let dim_x = match item_list.get(x) {
                     Some(item) => item.dim.clone(),
                     None => ItemDimension::default(),
                 };
+                // 1, 2, 3
                 self.analyze_box(x, hmx, hy, hmy, hz, hmz, dim_x.0, dim_x.1, dim_x.2);
                 if dim_x.0 == dim_x.2 && dim_x.2 == dim_x.1 {
                     continue;
                 }
+
+                // 1, 3, 2
                 self.analyze_box(x, hmx, hy, hmy, hz, hmz, dim_x.0, dim_x.2, dim_x.1);
+                // 2, 1, 3
                 self.analyze_box(x, hmx, hy, hmy, hz, hmz, dim_x.1, dim_x.0, dim_x.2);
+                // 2, 3, 1
                 self.analyze_box(x, hmx, hy, hmy, hz, hmz, dim_x.1, dim_x.2, dim_x.0);
-                self.analyze_box(x, hmx, hy, hmy, hz, hmz, dim_x.0, dim_x.2, dim_x.1);
+                // 3, 1, 2
                 self.analyze_box(x, hmx, hy, hmy, hz, hmz, dim_x.2, dim_x.0, dim_x.1);
+                // 3, 2, 1
                 self.analyze_box(x, hmx, hy, hmy, hz, hmz, dim_x.2, dim_x.1, dim_x.0);
 
                 y += item_y.quantity;
@@ -829,7 +833,7 @@ impl<'a> EbAfit<'a> {
             if let Some(smallestz) = self.smallestz.as_deref_mut() {
                 if self.bboxi.is_some()
                     && (self.layer_in_layer.is_some()
-                        || smallestz.pre.is_none() && smallestz.pos.is_none())
+                        || (smallestz.pre.is_none() && smallestz.pos.is_none()))
                 {
                     if self.layer_in_layer.is_none() {
                         self.pre_layer = self.layer_tickness;
@@ -913,12 +917,86 @@ impl<'a> EbAfit<'a> {
         });
 
         if self.is_packing_best {
-            println!("")
+            println!("packing best")
         } else if self.packed_vol == self.container.get_volume()
-            || self.packed_vol == self.total_box_vol
+        // || self.packed_vol == self.total_box_vol
         {
             self.is_packing = false;
             self.is_hundred_percent_packed = true;
+            println!("{}:{}", self.container.get_volume(), self.packed_vol);
+        }
+    }
+
+    fn find_layer(&mut self, thickness: f64) {
+        let mut exdim = 0.0;
+        let mut dimdif = 0.0;
+        let mut dimen2 = 0.0;
+        let mut dimen3 = 0.0;
+        let mut layer_eval = 0.0;
+        self.layer_tickness = 0.0;
+        let mut eval = 1000000.0;
+        let px = self.orientation.x;
+        let pz = self.orientation.z;
+
+        let items_list = self.item_list.clone();
+        for (x, item) in items_list.iter().enumerate() {
+            if let Some(is_packed) = self.item_packing_status.get(&x) {
+                if *is_packed {
+                    continue;
+                }
+            }
+
+            for y in 1..=3 {
+                match y {
+                    1 => {
+                        exdim = item.dim.0;
+                        dimen2 = item.dim.1;
+                        dimen3 = item.dim.2;
+                    }
+                    2 => {
+                        exdim = item.dim.1;
+                        dimen2 = item.dim.0;
+                        dimen3 = item.dim.2;
+                    }
+                    3 => {
+                        exdim = item.dim.2;
+                        dimen2 = item.dim.0;
+                        dimen3 = item.dim.1;
+                    }
+                    _ => unreachable!(),
+                }
+
+                layer_eval = 0.0;
+
+                if exdim <= thickness
+                    && ((dimen2 <= px && dimen3 <= pz) || (dimen3 <= px && dimen2 <= pz))
+                {
+                    for (z, item_z) in items_list.iter().enumerate() {
+                        if x != z && self.item_packing_status.get(&z).unwrap_or(&false) == &false {
+                            dimdif = (exdim - item_z.dim.0).abs();
+
+                            if (exdim - item_z.dim.1).abs() < dimdif {
+                                dimdif = (exdim - item_z.dim.1).abs();
+                            }
+
+                            if (exdim - item_z.dim.2).abs() < dimdif {
+                                dimdif = (exdim - item_z.dim.2).abs();
+                            }
+
+                            layer_eval = layer_eval + dimdif;
+                        }
+                    }
+
+                    if layer_eval < eval {
+                        eval = layer_eval;
+                        self.layer_tickness = exdim;
+                    }
+                }
+            }
+        }
+
+        if self.layer_tickness == 0.0 || self.layer_tickness > self.remainpy {
+            self.is_packing = false;
         }
     }
 }
@@ -935,7 +1013,7 @@ impl<'a> Iterator for EbAfit<'a> {
             self.bn += 1;
             Some(())
         } else {
-            self.is_packing_best = true;
+            // self.is_packing_best = true;
             // sets the evaluation of the first layer in the list to -1
             if let Some(layer) = self.layer_list.get_mut(0) {
                 layer.layer_eval = -1.0;
@@ -954,56 +1032,57 @@ impl<'a> Iterator for EbAfit<'a> {
             });
 
             let mut orientation_peekable = self.orientation_variant.clone().peekable();
-            let orientation = orientation_peekable.peek().unwrap();
-            let layer_list = self.layer_list.clone();
-            for layer in layer_list.iter() {
-                self.iteration_count += 1;
-                self.packed_vol = 0.0;
-                self.packedy = 0.0;
-                self.is_packing = true;
-                self.layer_tickness = layer.layer_dim;
-                self.remainpy = orientation.y;
-                self.remainpz = orientation.z;
-                self.packed_num_box = 0 as usize;
-                self.item_packing_status = HashMap::new();
+            if let Some(orientation) = orientation_peekable.peek() {
+                let layer_list = self.layer_list.clone();
+                for layer in layer_list.iter() {
+                    self.iteration_count += 1;
+                    self.packed_vol = 0.0;
+                    self.packedy = 0.0;
+                    self.is_packing = true;
+                    self.layer_tickness = layer.layer_dim;
+                    self.remainpy = orientation.y;
+                    self.remainpz = orientation.z;
+                    self.packed_num_box = 0 as usize;
+                    self.item_packing_status = HashMap::new();
 
-                while self.is_packing {
-                    self.layer_in_layer = None;
-                    self.layer_done = false;
-                    self.pack_layer();
-                    self.packedy = self.packedy + self.layer_tickness;
-                    self.remainpy = orientation.y - self.packedy;
-
-                    if self.layer_in_layer.is_some() {
-                        let prepackedy = self.packedy;
-                        let preremainpy = self.remainpy;
-                        self.remainpy = self.layer_tickness - self.pre_layer;
-                        self.packedy = self.packedy - self.layer_tickness + self.pre_layer;
-                        self.remainpz = self.lilz;
-                        self.layer_tickness = self.layer_in_layer.unwrap();
+                    while self.is_packing && !self.is_hundred_percent_packed {
+                        self.layer_in_layer = None;
                         self.layer_done = false;
                         self.pack_layer();
-                        self.packedy = prepackedy;
-                        self.remainpy = preremainpy;
-                        self.remainpz = orientation.z;
+                        self.packedy = self.packedy + self.layer_tickness;
+                        self.remainpy = orientation.y - self.packedy;
+                        if self.layer_in_layer.is_some() {
+                            let prepackedy = self.packedy;
+                            let preremainpy = self.remainpy;
+                            self.remainpy = self.layer_tickness - self.pre_layer;
+                            self.packedy = self.packedy - self.layer_tickness + self.pre_layer;
+                            self.remainpz = self.lilz;
+                            self.layer_tickness = self.layer_in_layer.unwrap();
+                            self.layer_done = false;
+                            self.pack_layer();
+                            self.packedy = prepackedy;
+                            self.remainpy = preremainpy;
+                            self.remainpz = orientation.z;
+                        }
+                        self.find_layer(self.remainpy);
                     }
                 }
-            }
 
-            if self.packed_vol > self.best_vol {
-                self.best_vol = self.packed_vol;
-                self.best_orientation_variant = self.orientation_variant.current_variant;
-            }
+                if self.packed_vol > self.best_vol {
+                    self.best_vol = self.packed_vol;
+                    self.best_orientation_variant = self.orientation_variant.current_variant;
+                }
 
-            if self.is_hundred_percent_packed {
-                return None;
-            }
+                if self.is_hundred_percent_packed {
+                    return None;
+                }
 
-            if self.container.length == self.container.height
-                && self.container.height == self.container.width
-            {
-                // this will skip to 5 on .next() call below
-                self.orientation_variant.current_variant = 4;
+                if self.container.length == self.container.height
+                    && self.container.height == self.container.width
+                {
+                    // this will skip to 5 on .next() call below
+                    self.orientation_variant.current_variant = 4;
+                }
             }
 
             // eof loop for current orientation
@@ -1040,7 +1119,7 @@ impl<'a> Iterator for OrientationVariant<'a> {
     type Item = Vector3;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.current_variant {
+        let new_orientation = match self.current_variant {
             0 => Some(Vector3 {
                 x: self.container.width,
                 y: self.container.height,
@@ -1072,6 +1151,8 @@ impl<'a> Iterator for OrientationVariant<'a> {
                 z: self.container.width,
             }),
             _ => None,
-        }
+        };
+        self.current_variant += 1;
+        new_orientation
     }
 }
