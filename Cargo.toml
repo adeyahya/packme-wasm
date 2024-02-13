@@ -1,5 +1,5 @@
 [package]
-name = "bin_pack_wasm"
+name = "packme-wasm"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,3 +9,5 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+serde = { version = "1.0.196", features = ["derive"] }
+serde_json = "1.0.113"

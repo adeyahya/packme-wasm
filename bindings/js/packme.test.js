@@ -1,0 +1,26 @@
+import { expect, test } from "bun:test";
+import { init } from "./packme";
+const f = Bun.file("../../target/wasm32-unknown-unknown/release/packme_wasm.wasm");
+const buf = await f.arrayBuffer();
+const { pack } = await init(buf);
+
+test("Binding test", () => {
+  const data = {
+    containers: [{
+      id: "container 1",
+      qty: 1,
+      dim: [20, 20, 30]
+    }],
+    items: [
+      {
+        id: "item 1",
+        qty: 5,
+        dim: [10, 10, 30]
+      }
+    ]
+  }
+
+  const result = pack(data);
+  expect(result.unpacked_items.length).toEqual(1);
+  expect(result.containers[0].items.length).toEqual(4);
+});
