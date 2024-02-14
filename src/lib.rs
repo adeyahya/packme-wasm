@@ -5,11 +5,10 @@ pub mod entity;
 pub unsafe fn pack(input_ptr: *mut u8, input_len: usize) -> *mut u8 {
     let buf: Vec<u8> = Vec::from_raw_parts(input_ptr, input_len, input_len);
     let input_str = String::from_utf8(buf).unwrap();
-    let input: AlgoInput = serde_json::from_str(&input_str).unwrap();
-    let (containers, items) = input.into_spec();
-    let mut algo = Algo { containers, items };
+    let (items, containers) = AlgoInput::parse(&input_str).unwrap();
+    let mut algo = Algo { items, containers };
     let result = algo.pack();
-    let result_str = serde_json::to_string(&result).unwrap();
+    let result_str = String::new();
     let mut buf = result_str.into_bytes();
     let ptr = buf.as_mut_ptr();
     std::mem::forget(buf);

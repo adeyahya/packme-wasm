@@ -1,8 +1,6 @@
-use serde::{Deserialize, Serialize};
-
 use super::{Item, Vector3};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct Container {
     pub id: String,
     pub dim: Vector3,

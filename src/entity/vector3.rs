@@ -1,8 +1,6 @@
-use serde::{Deserialize, Serialize};
-
 use super::Axis;
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Vector3 {
     pub length: f64,
     pub width: f64,

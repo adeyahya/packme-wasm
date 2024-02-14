@@ -1,7 +1,5 @@
 use std::cmp;
 
-use serde::{Deserialize, Serialize};
-
 use super::{Axis, Container, ContainerSpec, Item, ItemSpec, Rotation, Vector3};
 
 pub struct Algo {
@@ -9,7 +7,7 @@ pub struct Algo {
     pub containers: Vec<ContainerSpec>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct AlgoResult {
     pub unpacked_items: Vec<Item>,
     pub containers: Vec<Container>,
