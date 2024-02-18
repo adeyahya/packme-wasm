@@ -1,9 +1,7 @@
 import { expect, test } from "bun:test";
 import { init } from "./packme";
 import { AlgoInput } from "./interface";
-const f = Bun.file(
-  "../../target/wasm32-unknown-unknown/release/packme_wasm.wasm"
-);
+const f = Bun.file("./packme.wasm");
 const buf = await f.arrayBuffer();
 const { pack } = await init(buf);
 
