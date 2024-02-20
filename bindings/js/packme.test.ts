@@ -1,9 +1,14 @@
 import { expect, test } from "bun:test";
 import { init } from "./packme";
 import { AlgoInput } from "./interface";
+
 const f = Bun.file("./packme.wasm");
 const buf = await f.arrayBuffer();
-const { pack } = await init(buf);
+const { pack, version } = await init(buf);
+
+test("Version Test", () => {
+  expect(typeof version()).toEqual("string");
+});
 
 test("Binding test", () => {
   const data: AlgoInput = {

@@ -103,21 +103,21 @@ function getStringFromWasm0(ptr, len) {
   return cachedTextDecoder.decode(getUint8Memory0().subarray(ptr, ptr + len));
 }
 /**
- * @param {string} input
+ * @param {string} query
  * @returns {string}
  */
-export function pack(input) {
+export function msg(query) {
   let deferred2_0;
   let deferred2_1;
   try {
     const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
     const ptr0 = passStringToWasm0(
-      input,
+      query,
       wasm.__wbindgen_malloc,
       wasm.__wbindgen_realloc
     );
     const len0 = WASM_VECTOR_LEN;
-    wasm.pack(retptr, ptr0, len0);
+    wasm.msg(retptr, ptr0, len0);
     var r0 = getInt32Memory0()[retptr / 4 + 0];
     var r1 = getInt32Memory0()[retptr / 4 + 1];
     deferred2_0 = r0;
