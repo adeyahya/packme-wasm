@@ -1,0 +1,3 @@
+[submodule "bindings/go"]
+	path = bindings/go
+	url = https://github.com/adeyahya/packme-wasm.go
